@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Students — Admin — Enjoy Creator Academy™</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+
+<div class="eca-shell">
+  <div id="ecaSidebarMount"></div>
+  <div class="eca-main">
+    <div class="eca-topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="eca-mobile-toggle" id="ecaMobileToggle">☰</button>
+        <div><h1 id="ecaPageTitle">Students</h1><div class="sub" id="studentCountSub"></div></div>
+      </div>
+      <div class="eca-user-chip" id="ecaUserChip"></div>
+    </div>
+
+    <div class="eca-content">
+      <div class="toolbar">
+        <div class="search-input"><input id="searchInput" placeholder="Search students…" /></div>
+        <button class="btn btn-primary" id="addStudentBtn">+ Add Student</button>
+      </div>
+
+      <div class="card table-wrap">
+        <table class="table">
+          <thead><tr><th>Student</th><th>Courses</th><th>Progress</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
+          <tbody id="studentsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="studentModal" hidden>
+  <div class="modal" style="max-width:520px;">
+    <h3 id="studentModalTitle">Add Student</h3>
+    <form id="studentForm">
+      <input type="hidden" id="studentId" />
+      <div class="field-row">
+        <div class="field"><label>Full Name</label><input id="studentName" required /></div>
+        <div class="field"><label>Email</label><input id="studentEmail" type="email" required /></div>
+      </div>
+      <div class="field"><label>Temporary Password</label><input id="studentPassword" required /></div>
+      <div class="field">
+        <label>Course Access</label>
+        <div id="courseAccessList" style="display:flex; flex-direction:column; gap:8px; margin-top:2px;"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="studentCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Student</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="../assets/js/db.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/ui.js"></script>
+<script>
+  const admin = ECA.Auth.guardAdmin();
+  if (admin) {
+    ECA.UI.renderShell({ role: "admin", active: "students.html", user: admin, title: "Students" });
+
+    let searchTerm = "";
+
+    function render() {
+      const db = ECA.load();
+      let students = db.users.filter((u) => u.role === "student");
+      if (searchTerm) {
+        const t = searchTerm.toLowerCase();
+        students = students.filter((s) => s.name.toLowerCase().includes(t) || s.email.toLowerCase().includes(t));
+      }
+      document.getElementById("studentCountSub").textContent = `${db.users.filter(u=>u.role==="student").length} students total`;
+
+      const tbody = document.getElementById("studentsBody");
+      if (students.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><h3>No students found</h3><p>Try a different search, or add your first student.</p></div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = students
+        .map((s) => {
+          const courses = ECA.coursesForUser(db, s.id);
+          const avgPct = courses.length
+            ? Math.round(courses.reduce((sum, c) => sum + ECA.courseProgressPct(db, s.id, c.id), 0) / courses.length)
+            : 0;
+          const lastLogin = s.last_login ? new Date(s.last_login).toLocaleDateString() : "Never";
+          return `
+          <tr>
+            <td>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span class="avatar" style="width:30px;height:30px;border-radius:50%;background:var(--bg-3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--gold);border:1px solid var(--line-strong);">${ECA.UI.initials(s.name)}</span>
+                <div><div style="font-weight:500;">${ECA.UI.esc(s.name)}</div><div style="font-size:12px;color:var(--ink-faint);">${ECA.UI.esc(s.email)}</div></div>
+              </div>
+            </td>
+            <td>${courses.length ? courses.map((c) => `<span class="badge" style="margin:2px 4px 2px 0;">${ECA.UI.esc(c.title)}</span>`).join("") : '<span style="color:var(--ink-faint); font-size:12.5px;">None assigned</span>'}</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:8px; min-width:100px;">
+                <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:${avgPct}%;"></div></div>
+                <span style="font-size:12px; color:var(--ink-dim);">${avgPct}%</span>
+              </div>
+            </td>
+            <td><span class="badge ${s.status === "active" ? "badge-published" : ""}">${s.status}</span></td>
+            <td style="color:var(--ink-faint); font-size:12.5px;">${lastLogin}</td>
+            <td style="text-align:right; white-space:nowrap;">
+              <button class="btn btn-ghost btn-small" data-edit="${s.id}">Edit</button>
+              <button class="btn btn-ghost btn-small" data-toggle-status="${s.id}">${s.status === "active" ? "Disable" : "Activate"}</button>
+              <button class="btn btn-danger btn-small" data-del="${s.id}">Delete</button>
+            </td>
+          </tr>`;
+        })
+        .join("");
+
+      tbody.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => openModal(b.dataset.edit)));
+      tbody.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => deleteStudent(b.dataset.del)));
+      tbody.querySelectorAll("[data-toggle-status]").forEach((b) => b.addEventListener("click", () => toggleStatus(b.dataset.toggleStatus)));
+    }
+
+    function toggleStatus(id) {
+      const db = ECA.load();
+      const s = db.users.find((u) => u.id === id);
+      const goingTo = s.status === "active" ? "disabled" : "active";
+      ECA.UI.confirmModal({
+        title: goingTo === "disabled" ? "Disable this student?" : "Restore this student?",
+        body: goingTo === "disabled"
+          ? `${s.name} will immediately lose the ability to log in. Their access assignments and progress are kept and restored if you reactivate them.`
+          : `${s.name} will be able to log in again immediately.`,
+        confirmLabel: goingTo === "disabled" ? "Disable" : "Activate",
+        danger: goingTo === "disabled",
+        onConfirm: () => {
+          const fresh = ECA.load();
+          fresh.users.find((u) => u.id === id).status = goingTo;
+          ECA.save(fresh);
+          ECA.UI.toast(goingTo === "disabled" ? "Student disabled." : "Student restored.");
+          render();
+        },
+      });
+    }
+
+    function deleteStudent(id) {
+      const db = ECA.load();
+      const s = db.users.find((u) => u.id === id);
+      ECA.UI.confirmModal({
+        title: "Delete student?",
+        body: `This permanently removes ${s.name}'s account, course access, and progress history. This cannot be undone.`,
+        confirmLabel: "Delete Student",
+        danger: true,
+        onConfirm: () => {
+          const fresh = ECA.load();
+          fresh.users = fresh.users.filter((u) => u.id !== id);
+          fresh.course_access = fresh.course_access.filter((a) => a.user_id !== id);
+          fresh.video_progress = fresh.video_progress.filter((p) => p.user_id !== id);
+          ECA.save(fresh);
+          ECA.UI.toast("Student deleted.");
+          render();
+        },
+      });
+    }
+
+    function openModal(id) {
+      const db = ECA.load();
+      const s = id ? db.users.find((u) => u.id === id) : null;
+      document.getElementById("studentModalTitle").textContent = s ? "Edit Student" : "Add Student";
+      document.getElementById("studentId").value = s ? s.id : "";
+      document.getElementById("studentName").value = s ? s.name : "";
+      document.getElementById("studentEmail").value = s ? s.email : "";
+      document.getElementById("studentPassword").value = s ? s.password : "";
+
+      const myAccess = s ? db.course_access.filter((a) => a.user_id === s.id).map((a) => a.course_id) : [];
+      const list = document.getElementById("courseAccessList");
+      list.innerHTML = db.courses
+        .map((c) => `
+          <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-dim);">
+            <input type="checkbox" value="${c.id}" ${myAccess.includes(c.id) ? "checked" : ""} style="width:auto;" />
+            ${ECA.UI.esc(c.title)}
+          </label>`)
+        .join("");
+
+      document.getElementById("studentModal").hidden = false;
+    }
+    function closeModal() { document.getElementById("studentModal").hidden = true; }
+
+    document.getElementById("addStudentBtn").addEventListener("click", () => openModal(null));
+    document.getElementById("studentCancelBtn").addEventListener("click", closeModal);
+
+    document.getElementById("studentForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const db = ECA.load();
+      const id = document.getElementById("studentId").value;
+      const name = document.getElementById("studentName").value.trim();
+      const email = document.getElementById("studentEmail").value.trim();
+      const password = document.getElementById("studentPassword").value;
+      if (!name || !email || !password) { ECA.UI.toast("Name, email, and password are required.", "error"); return; }
+
+      const dupe = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase() && u.id !== id);
+      if (dupe) { ECA.UI.toast("A user with that email already exists.", "error"); return; }
+
+      let userId = id;
+      if (id) {
+        const u = db.users.find((x) => x.id === id);
+        Object.assign(u, { name, email, password });
+      } else {
+        userId = ECA.uid("user");
+        db.users.push({ id: userId, name, email, password, role: "student", status: "active", avatar: "", created_at: ECA.nowISO(), last_login: null });
+      }
+
+      const checked = [...document.querySelectorAll("#courseAccessList input:checked")].map((cb) => cb.value);
+      db.course_access = db.course_access.filter((a) => a.user_id !== userId);
+      checked.forEach((courseId) => db.course_access.push({ id: ECA.uid("acc"), user_id: userId, course_id: courseId, granted_at: ECA.nowISO() }));
+
+      ECA.save(db);
+      closeModal();
+      ECA.UI.toast(id ? "Student updated." : "Student added successfully.");
+      render();
+    });
+
+    document.getElementById("searchInput").addEventListener("input", (e) => { searchTerm = e.target.value; render(); });
+
+    render();
+  }
+</script>
+</body>
+</html>

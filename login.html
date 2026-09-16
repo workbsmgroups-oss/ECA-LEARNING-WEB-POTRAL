@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Login — Enjoy Creator Academy™</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="login-wrap">
+  <div class="card login-card">
+    <div class="eca-brand">
+      <span class="mark">E</span>
+      <span class="word">ENJOY CREATOR<small>ACADEMY™</small></span>
+    </div>
+    <h2>Welcome back</h2>
+    <p class="sub" id="loginMessage">Login to continue your learning journey.</p>
+
+    <div class="login-error" id="loginError" hidden></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="you@example.com" required autocomplete="username" />
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Login</button>
+    </form>
+
+    <div class="login-foot">
+      <label style="display:flex; align-items:center; gap:6px; color:var(--ink-dim);">
+        <input type="checkbox" id="rememberMe" style="width:auto;" /> Remember me
+      </label>
+      <a href="#" id="forgotLink" style="color:var(--ink-dim);">Forgot password?</a>
+    </div>
+
+    <div class="demo-creds">
+      <div><b>Demo admin</b> — admin@eca.com / admin123</div>
+      <div style="margin-top:4px;"><b>Demo student</b> — rahul@student.com / student123</div>
+      <div style="margin-top:4px;"><b>Demo student (2 courses)</b> — priya@student.com / student123</div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/db.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/ui.js"></script>
+<script>
+  ECA.Auth.redirectIfLoggedIn();
+
+  const db = ECA.load();
+  document.getElementById("loginMessage").textContent = db.platform_settings.login_message;
+
+  const savedEmail = localStorage.getItem("eca_remember_email");
+  if (savedEmail) {
+    document.getElementById("email").value = savedEmail;
+    document.getElementById("rememberMe").checked = true;
+  }
+
+  document.getElementById("loginForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    const errEl = document.getElementById("loginError");
+    errEl.hidden = true;
+
+    const result = ECA.Auth.login(email, password);
+    if (!result.ok) {
+      errEl.textContent = result.error;
+      errEl.hidden = false;
+      return;
+    }
+
+    if (document.getElementById("rememberMe").checked) {
+      localStorage.setItem("eca_remember_email", email);
+    } else {
+      localStorage.removeItem("eca_remember_email");
+    }
+
+    window.location.href = result.user.role === "admin" ? "admin/index.html" : "dashboard.html";
+  });
+
+  document.getElementById("forgotLink").addEventListener("click", function (e) {
+    e.preventDefault();
+    ECA.UI.toast("Password reset isn't wired up in this preview — contact your admin.", "error");
+  });
+</script>
+</body>
+</html>

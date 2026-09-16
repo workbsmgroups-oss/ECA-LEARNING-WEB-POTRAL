@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Profile — Enjoy Creator Academy™</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="eca-shell">
+  <div id="ecaSidebarMount"></div>
+  <div class="eca-main">
+    <div class="eca-topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="eca-mobile-toggle" id="ecaMobileToggle">☰</button>
+        <div><h1 id="ecaPageTitle">Profile</h1></div>
+      </div>
+      <div class="eca-user-chip" id="ecaUserChip"></div>
+    </div>
+
+    <div class="eca-content" style="max-width:520px;">
+      <div class="card" style="padding:26px; margin-bottom:20px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+          <span class="avatar" id="bigAvatar" style="width:56px;height:56px;border-radius:50%;background:var(--bg-3);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600;color:var(--gold);border:1px solid var(--line-strong);"></span>
+          <div>
+            <h3 id="profName"></h3>
+            <p id="profEmail" style="font-size:13px; margin-top:2px;"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:26px;">
+        <h3 style="margin-bottom:16px;">Change Password</h3>
+        <form id="pwForm">
+          <div class="field">
+            <label>Current password</label>
+            <input type="password" id="curPw" required />
+          </div>
+          <div class="field">
+            <label>New password</label>
+            <input type="password" id="newPw" required minlength="6" />
+          </div>
+          <button class="btn btn-primary" type="submit">Update Password</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/db.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/ui.js"></script>
+<script>
+  const user = ECA.Auth.guardStudent();
+  if (user) {
+    ECA.UI.renderShell({ role: "student", active: "profile.html", user, title: "Profile" });
+    document.getElementById("bigAvatar").textContent = ECA.UI.initials(user.name);
+    document.getElementById("profName").textContent = user.name;
+    document.getElementById("profEmail").textContent = user.email;
+
+    document.getElementById("pwForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const db = ECA.load();
+      const me = db.users.find((u) => u.id === user.id);
+      const cur = document.getElementById("curPw").value;
+      const next = document.getElementById("newPw").value;
+      if (me.password !== cur) {
+        ECA.UI.toast("Current password is incorrect.", "error");
+        return;
+      }
+      me.password = next;
+      ECA.save(db);
+      document.getElementById("pwForm").reset();
+      ECA.UI.toast("Password updated.");
+    });
+  }
+</script>
+</body>
+</html>

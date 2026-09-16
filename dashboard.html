@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — Enjoy Creator Academy™</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="eca-shell">
+  <div id="ecaSidebarMount"></div>
+  <div class="eca-main">
+    <div class="eca-topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="eca-mobile-toggle" id="ecaMobileToggle">☰</button>
+        <div>
+          <h1 id="ecaPageTitle">Dashboard</h1>
+          <div class="sub" id="ecaPageSub"></div>
+        </div>
+      </div>
+      <div class="eca-user-chip" id="ecaUserChip"></div>
+    </div>
+
+    <div class="eca-content">
+      <div id="dashWelcome"></div>
+
+      <div id="continueLearningBlock" style="margin:26px 0;"></div>
+
+      <div id="myCoursesSection">
+        <div class="section-head" id="my-courses">
+          <h2>My Courses</h2>
+        </div>
+        <div class="grid-cards" id="myCoursesGrid"></div>
+      </div>
+
+      <div style="margin-top:40px;">
+        <div class="section-head"><h2>Recently Watched</h2></div>
+        <div class="card" id="recentList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/db.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/ui.js"></script>
+<script>
+  const user = ECA.Auth.guardStudent();
+  if (user) {
+    const db = ECA.load();
+
+    ECA.UI.renderShell({
+      role: "student",
+      active: "dashboard.html",
+      user: user,
+      title: "Dashboard",
+      sub: db.platform_settings.welcome_message,
+    });
+
+    document.getElementById("dashWelcome").innerHTML = `
+      <h1>Welcome to Enjoy Creator Academy™</h1>
+      <p style="margin-top:8px; font-size:15px;">Hi ${ECA.UI.esc(user.name.split(" ")[0])} — here's where you left off.</p>
+    `;
+
+    const myCourses = ECA.coursesForUser(db, user.id);
+
+    // Continue learning: pick most recent in-progress video
+    const recent = ECA.recentlyWatched(db, user.id, 1)[0];
+    const clBlock = document.getElementById("continueLearningBlock");
+    if (recent && recent.video) {
+      const course = db.courses.find((c) => c.id === recent.video.course_id);
+      const pct = ECA.courseProgressPct(db, user.id, course.id);
+      clBlock.innerHTML = `
+        <div class="card" style="padding:24px; display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap;">
+          <div>
+            <div class="kicker">Continue learning</div>
+            <h2>${ECA.UI.esc(course.title)}</h2>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:12px; max-width:320px;">
+              <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:${pct}%;"></div></div>
+              <span style="font-size:13px; color:var(--ink-dim);">${pct}%</span>
+            </div>
+          </div>
+          <a class="btn btn-primary" href="lesson.html?video=${recent.video.id}">Continue Learning</a>
+        </div>`;
+    } else if (myCourses.length) {
+      clBlock.innerHTML = `
+        <div class="card" style="padding:24px; display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap;">
+          <div>
+            <div class="kicker">Get started</div>
+            <h2>${ECA.UI.esc(myCourses[0].title)}</h2>
+            <p style="margin-top:8px;">You haven't started this course yet.</p>
+          </div>
+          <a class="btn btn-primary" href="course.html?course=${myCourses[0].id}">Start Learning</a>
+        </div>`;
+    } else {
+      clBlock.innerHTML = "";
+    }
+
+    // My courses grid
+    const grid = document.getElementById("myCoursesGrid");
+    if (myCourses.length === 0) {
+      grid.innerHTML = `
+        <div class="empty-state card" style="grid-column: 1/-1;">
+          <h3>No courses assigned yet</h3>
+          <p>Your administrator hasn't granted you access to a course. Reach out to support once you're invited.</p>
+        </div>`;
+    } else {
+      grid.innerHTML = myCourses
+        .map((c) => {
+          const pct = ECA.courseProgressPct(db, user.id, c.id);
+          const modCount = ECA.modulesForCourse(db, c.id).length;
+          const vidCount = ECA.videosForCourse(db, c.id).length;
+          return `
+            <a href="course.html?course=${c.id}" class="card course-preview-card">
+              <div class="thumb">${ECA.UI.esc(c.title.split(" ").map(w=>w[0]).slice(0,2).join(""))}</div>
+              <div class="body">
+                <h3>${ECA.UI.esc(c.title)}</h3>
+                <div class="meta">${modCount} modules · ${vidCount} videos</div>
+                <div style="display:flex; align-items:center; gap:8px; margin-top:12px;">
+                  <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:${pct}%;"></div></div>
+                  <span style="font-size:12px; color:var(--ink-dim);">${pct}%</span>
+                </div>
+              </div>
+            </a>`;
+        })
+        .join("");
+    }
+
+    // Recently watched
+    const recentAll = ECA.recentlyWatched(db, user.id, 5);
+    const recentList = document.getElementById("recentList");
+    if (recentAll.length === 0 || !recentAll[0].video) {
+      recentList.innerHTML = `<div class="empty-state"><h3>No completed lessons yet</h3><p>Once you start watching, your history shows up here.</p></div>`;
+    } else {
+      recentList.innerHTML = recentAll
+        .filter((r) => r.video)
+        .map((r) => {
+          const done = !!r.progress.completed_at;
+          return `
+          <a href="lesson.html?video=${r.video.id}" style="display:flex; align-items:center; justify-content:space-between; padding:15px 18px; border-bottom:1px solid var(--line);">
+            <div>
+              <div style="font-size:13.5px; font-weight:500;">${ECA.UI.esc(r.video.title)}</div>
+              <div style="font-size:12px; color:var(--ink-faint); margin-top:3px;">Lesson ${r.video.lesson_number}</div>
+            </div>
+            <span class="badge ${done ? 'badge-published' : ''}">${done ? "Completed" : "In progress"}</span>
+          </a>`;
+        })
+        .join("");
+    }
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Modules — Admin — Enjoy Creator Academy™</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+
+<div class="eca-shell">
+  <div id="ecaSidebarMount"></div>
+  <div class="eca-main">
+    <div class="eca-topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="eca-mobile-toggle" id="ecaMobileToggle">☰</button>
+        <div><h1 id="ecaPageTitle">Modules</h1><div class="sub">Drag rows to reorder within a course</div></div>
+      </div>
+      <div class="eca-user-chip" id="ecaUserChip"></div>
+    </div>
+
+    <div class="eca-content">
+      <div class="toolbar">
+        <div class="filters">
+          <select id="courseFilter" style="background:var(--bg-2); border:1px solid var(--line-strong); border-radius:9px; padding:9px 12px;"></select>
+        </div>
+        <button class="btn btn-primary" id="addModuleBtn">+ Add Module</button>
+      </div>
+
+      <div class="card table-wrap">
+        <table class="table">
+          <thead><tr><th></th><th>Module</th><th>Videos</th><th>Status</th><th></th></tr></thead>
+          <tbody id="modulesBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modModal" hidden>
+  <div class="modal">
+    <h3 id="modModalTitle">Add Module</h3>
+    <form id="modForm">
+      <input type="hidden" id="modId" />
+      <div class="field"><label>Module Title</label><input id="modTitle" required /></div>
+      <div class="field"><label>Description</label><textarea id="modDesc"></textarea></div>
+      <div class="field">
+        <label>Status</label>
+        <select id="modStatus"><option value="published">Published</option><option value="draft">Draft</option></select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="modCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Module</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="../assets/js/db.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/ui.js"></script>
+<script>
+  const user = ECA.Auth.guardAdmin();
+  if (user) {
+    ECA.UI.renderShell({ role: "admin", active: "modules.html", user, title: "Modules" });
+
+    let currentCourseId = null;
+
+    function initCourseFilter() {
+      const db = ECA.load();
+      const sel = document.getElementById("courseFilter");
+      sel.innerHTML = db.courses.map((c) => `<option value="${c.id}">${ECA.UI.esc(c.title)}</option>`).join("");
+      const params = new URLSearchParams(window.location.search);
+      currentCourseId = params.get("course") || (db.courses[0] && db.courses[0].id);
+      sel.value = currentCourseId;
+      sel.addEventListener("change", () => { currentCourseId = sel.value; render(); });
+    }
+
+    function render() {
+      const db = ECA.load();
+      const modules = ECA.modulesForCourse(db, currentCourseId);
+      const tbody = document.getElementById("modulesBody");
+      if (modules.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><h3>No modules yet</h3><p>Add the first module for this course.</p></div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = modules
+        .map((m, i) => {
+          const vidCount = db.videos.filter((v) => v.module_id === m.id).length;
+          return `
+          <tr class="drag-row" draggable="true" data-id="${m.id}">
+            <td><span class="drag-handle">⠿</span></td>
+            <td><strong>MODULE ${String(i + 1).padStart(2, "0")}</strong> — ${ECA.UI.esc(m.title)}</td>
+            <td>${vidCount}</td>
+            <td><span class="badge ${m.status === "published" ? "badge-published" : "badge-draft"}">${m.status}</span></td>
+            <td style="text-align:right; white-space:nowrap;">
+              <a class="btn btn-ghost btn-small" href="videos.html?course=${currentCourseId}&module=${m.id}">Videos</a>
+              <button class="btn btn-ghost btn-small" data-edit="${m.id}">Edit</button>
+              <button class="btn btn-danger btn-small" data-del="${m.id}">Delete</button>
+            </td>
+          </tr>`;
+        })
+        .join("");
+
+      tbody.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => openModal(b.dataset.edit)));
+      tbody.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => deleteModule(b.dataset.del)));
+      enableDragReorder(tbody);
+    }
+
+    function enableDragReorder(tbody) {
+      let dragEl = null;
+      tbody.querySelectorAll("tr[draggable]").forEach((row) => {
+        row.addEventListener("dragstart", () => { dragEl = row; row.classList.add("dragging"); });
+        row.addEventListener("dragend", () => { row.classList.remove("dragging"); persistOrder(tbody); });
+        row.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          const after = getRowAfter(tbody, e.clientY);
+          if (!dragEl) return;
+          if (after == null) tbody.appendChild(dragEl);
+          else tbody.insertBefore(dragEl, after);
+        });
+      });
+    }
+    function getRowAfter(container, y) {
+      const rows = [...container.querySelectorAll("tr[draggable]:not(.dragging)")];
+      return rows.reduce((closest, row) => {
+        const box = row.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) return { offset, element: row };
+        return closest;
+      }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+    }
+    function persistOrder(tbody) {
+      const db = ECA.load();
+      const ids = [...tbody.querySelectorAll("tr[draggable]")].map((r) => r.dataset.id);
+      ids.forEach((id, i) => {
+        const item = db.modules.find((x) => x.id === id);
+        if (item) item.order = i + 1;
+      });
+      ECA.save(db);
+      ECA.UI.toast("Order updated.");
+      render();
+    }
+
+    function openModal(id) {
+      const db = ECA.load();
+      const m = id ? db.modules.find((x) => x.id === id) : null;
+      document.getElementById("modModalTitle").textContent = m ? "Edit Module" : "Add Module";
+      document.getElementById("modId").value = m ? m.id : "";
+      document.getElementById("modTitle").value = m ? m.title : "";
+      document.getElementById("modDesc").value = m ? m.description : "";
+      document.getElementById("modStatus").value = m ? m.status : "published";
+      document.getElementById("modModal").hidden = false;
+    }
+    function closeModal() { document.getElementById("modModal").hidden = true; }
+
+    function deleteModule(id) {
+      const db = ECA.load();
+      const m = db.modules.find((x) => x.id === id);
+      const vidCount = db.videos.filter((v) => v.module_id === id).length;
+      ECA.UI.confirmModal({
+        title: "Delete module?",
+        body: `Deleting "${m.title}" will also remove its ${vidCount} video(s) and related student progress. This cannot be undone.`,
+        confirmLabel: "Delete Module",
+        danger: true,
+        onConfirm: () => {
+          const fresh = ECA.load();
+          fresh.modules = fresh.modules.filter((x) => x.id !== id);
+          fresh.videos = fresh.videos.filter((v) => v.module_id !== id);
+          fresh.video_progress = fresh.video_progress.filter((p) => p.module_id !== id);
+          ECA.save(fresh);
+          ECA.UI.toast("Module deleted.");
+          render();
+        },
+      });
+    }
+
+    document.getElementById("addModuleBtn").addEventListener("click", () => openModal(null));
+    document.getElementById("modCancelBtn").addEventListener("click", closeModal);
+
+    document.getElementById("modForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const db = ECA.load();
+      const id = document.getElementById("modId").value;
+      const data = {
+        title: document.getElementById("modTitle").value.trim(),
+        description: document.getElementById("modDesc").value.trim(),
+        status: document.getElementById("modStatus").value,
+      };
+      if (!data.title) { ECA.UI.toast("Module title is required.", "error"); return; }
+
+      if (id) {
+        Object.assign(db.modules.find((x) => x.id === id), data);
+      } else {
+        const count = db.modules.filter((m) => m.course_id === currentCourseId).length;
+        db.modules.push({
+          id: ECA.uid("mod"),
+          course_id: currentCourseId,
+          order: count + 1,
+          created_at: ECA.nowISO(),
+          ...data,
+        });
+      }
+      ECA.save(db);
+      closeModal();
+      ECA.UI.toast(id ? "Module updated." : "Module added successfully.");
+      render();
+    });
+
+    initCourseFilter();
+    render();
+  }
+</script>
+</body>
+</html>

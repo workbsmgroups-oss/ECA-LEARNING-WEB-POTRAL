@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Video Library — Admin — Enjoy Creator Academy™</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+
+<div class="eca-shell">
+  <div id="ecaSidebarMount"></div>
+  <div class="eca-main">
+    <div class="eca-topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="eca-mobile-toggle" id="ecaMobileToggle">☰</button>
+        <div><h1 id="ecaPageTitle">Video Library</h1><div class="sub" id="vidCountSub"></div></div>
+      </div>
+      <div class="eca-user-chip" id="ecaUserChip"></div>
+    </div>
+
+    <div class="eca-content">
+      <div class="toolbar">
+        <div class="filters">
+          <div class="search-input"><input id="searchInput" placeholder="Search videos…" /></div>
+          <select id="courseFilter"></select>
+          <select id="moduleFilter"></select>
+          <select id="statusFilter">
+            <option value="">All statuses</option>
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="addVideoBtn">+ Add Video</button>
+      </div>
+
+      <div class="card table-wrap">
+        <table class="table">
+          <thead><tr><th></th><th>Video</th><th>Course</th><th>Module</th><th>Duration</th><th>Status</th><th></th></tr></thead>
+          <tbody id="videosBody"></tbody>
+        </table>
+      </div>
+      <p style="font-size:12px; margin-top:10px;" id="resultCount"></p>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="videoModal" hidden>
+  <div class="modal" style="max-width:540px;">
+    <h3 id="videoModalTitle">Add New Video</h3>
+    <form id="videoForm">
+      <input type="hidden" id="videoId" />
+      <div class="field"><label>Video Title</label><input id="videoTitle" required /></div>
+      <div class="field"><label>Video Description</label><textarea id="videoDesc"></textarea></div>
+      <div class="field-row">
+        <div class="field">
+          <label>Course</label>
+          <select id="videoCourse" required></select>
+        </div>
+        <div class="field">
+          <label>Module</label>
+          <select id="videoModule" required></select>
+        </div>
+      </div>
+      <div class="field"><label>Video URL / ID</label><input id="videoUrl" placeholder="https://player.vimeo.com/video/…" required /></div>
+      <div class="field-row">
+        <div class="field"><label>Duration (minutes)</label><input id="videoDuration" type="number" min="1" required /></div>
+        <div class="field"><label>Lesson Number</label><input id="videoLesson" type="number" min="1" required /></div>
+      </div>
+      <div class="field">
+        <label>Status</label>
+        <select id="videoStatus"><option value="published">Published</option><option value="draft">Draft</option></select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="videoCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Video</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="../assets/js/db.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/ui.js"></script>
+<script>
+  const user = ECA.Auth.guardAdmin();
+  if (user) {
+    ECA.UI.renderShell({ role: "admin", active: "videos.html", user, title: "Video Library" });
+
+    const params = new URLSearchParams(window.location.search);
+    let filters = {
+      search: "",
+      course: params.get("course") || "",
+      module: params.get("module") || "",
+      status: "",
+    };
+
+    function populateFilterSelects() {
+      const db = ECA.load();
+      const courseSel = document.getElementById("courseFilter");
+      courseSel.innerHTML = `<option value="">All courses</option>` + db.courses.map((c) => `<option value="${c.id}">${ECA.UI.esc(c.title)}</option>`).join("");
+      courseSel.value = filters.course;
+      refreshModuleFilterOptions();
+    }
+
+    function refreshModuleFilterOptions() {
+      const db = ECA.load();
+      const moduleSel = document.getElementById("moduleFilter");
+      const mods = filters.course ? ECA.modulesForCourse(db, filters.course) : db.modules;
+      moduleSel.innerHTML = `<option value="">All modules</option>` + mods.map((m) => `<option value="${m.id}">${ECA.UI.esc(m.title)}</option>`).join("");
+      moduleSel.value = filters.module;
+    }
+
+    function render() {
+      const db = ECA.load();
+      let videos = db.videos.slice();
+      if (filters.course) videos = videos.filter((v) => v.course_id === filters.course);
+      if (filters.module) videos = videos.filter((v) => v.module_id === filters.module);
+      if (filters.status) videos = videos.filter((v) => v.status === filters.status);
+      if (filters.search) {
+        const term = filters.search.toLowerCase();
+        videos = videos.filter((v) => v.title.toLowerCase().includes(term));
+      }
+      videos.sort((a, b) => a.order - b.order);
+
+      document.getElementById("vidCountSub").textContent = `${db.videos.length} total videos across ${db.courses.length} courses`;
+      document.getElementById("resultCount").textContent = `Showing ${videos.length} of ${db.videos.length} videos`;
+
+      const tbody = document.getElementById("videosBody");
+      if (videos.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>No videos found</h3><p>Try clearing filters, or add a new video.</p></div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = videos
+        .map((v) => {
+          const course = db.courses.find((c) => c.id === v.course_id);
+          const mod = db.modules.find((m) => m.id === v.module_id);
+          return `
+          <tr class="drag-row" draggable="true" data-id="${v.id}">
+            <td><span class="drag-handle">⠿</span></td>
+            <td><strong>Lesson ${v.lesson_number}</strong> — ${ECA.UI.esc(v.title)}</td>
+            <td>${ECA.UI.esc(course ? course.title : "—")}</td>
+            <td>${ECA.UI.esc(mod ? mod.title : "—")}</td>
+            <td>${ECA.fmtDuration(v.duration_seconds)}</td>
+            <td><span class="badge ${v.status === "published" ? "badge-published" : "badge-draft"}">${v.status}</span></td>
+            <td style="text-align:right; white-space:nowrap;">
+              <button class="btn btn-ghost btn-small" data-dup="${v.id}">Duplicate</button>
+              <button class="btn btn-ghost btn-small" data-edit="${v.id}">Edit</button>
+              <button class="btn btn-danger btn-small" data-del="${v.id}">Delete</button>
+            </td>
+          </tr>`;
+        })
+        .join("");
+
+      tbody.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => openModal(b.dataset.edit)));
+      tbody.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => deleteVideo(b.dataset.del)));
+      tbody.querySelectorAll("[data-dup]").forEach((b) => b.addEventListener("click", () => duplicateVideo(b.dataset.dup)));
+      enableDragReorder(tbody);
+    }
+
+    function enableDragReorder(tbody) {
+      let dragEl = null;
+      tbody.querySelectorAll("tr[draggable]").forEach((row) => {
+        row.addEventListener("dragstart", () => { dragEl = row; row.classList.add("dragging"); });
+        row.addEventListener("dragend", () => { row.classList.remove("dragging"); persistOrder(tbody); });
+        row.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          const after = getRowAfter(tbody, e.clientY);
+          if (!dragEl) return;
+          if (after == null) tbody.appendChild(dragEl);
+          else tbody.insertBefore(dragEl, after);
+        });
+      });
+    }
+    function getRowAfter(container, y) {
+      const rows = [...container.querySelectorAll("tr[draggable]:not(.dragging)")];
+      return rows.reduce((closest, row) => {
+        const box = row.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) return { offset, element: row };
+        return closest;
+      }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+    }
+    function persistOrder(tbody) {
+      // Reordering is meaningful within a single module — only persist
+      // when a module filter narrows the list to one module's videos.
+      if (!filters.module) {
+        ECA.UI.toast("Tip: filter to a single module to reorder its lessons.", "error");
+        render();
+        return;
+      }
+      const db = ECA.load();
+      const ids = [...tbody.querySelectorAll("tr[draggable]")].map((r) => r.dataset.id);
+      ids.forEach((id, i) => {
+        const v = db.videos.find((x) => x.id === id);
+        if (v) { v.order = i + 1; v.lesson_number = i + 1; }
+      });
+      ECA.save(db);
+      ECA.UI.toast("Lesson order updated.");
+      render();
+    }
+
+    function populateCourseModuleSelectsInForm(selectedCourseId, selectedModuleId) {
+      const db = ECA.load();
+      const courseSel = document.getElementById("videoCourse");
+      courseSel.innerHTML = db.courses.map((c) => `<option value="${c.id}">${ECA.UI.esc(c.title)}</option>`).join("");
+      const cId = selectedCourseId || filters.course || db.courses[0].id;
+      courseSel.value = cId;
+
+      function refreshModules() {
+        const moduleSel = document.getElementById("videoModule");
+        const mods = ECA.modulesForCourse(db, courseSel.value);
+        moduleSel.innerHTML = mods.map((m) => `<option value="${m.id}">${ECA.UI.esc(m.title)}</option>`).join("");
+        if (selectedModuleId) moduleSel.value = selectedModuleId;
+      }
+      courseSel.onchange = refreshModules;
+      refreshModules();
+    }
+
+    function openModal(id) {
+      const db = ECA.load();
+      const v = id ? db.videos.find((x) => x.id === id) : null;
+      document.getElementById("videoModalTitle").textContent = v ? "Edit Video" : "Add New Video";
+      document.getElementById("videoId").value = v ? v.id : "";
+      document.getElementById("videoTitle").value = v ? v.title : "";
+      document.getElementById("videoDesc").value = v ? v.description : "";
+      document.getElementById("videoUrl").value = v ? v.video_url : "";
+      document.getElementById("videoDuration").value = v ? Math.round(v.duration_seconds / 60) : "";
+      document.getElementById("videoLesson").value = v ? v.lesson_number : "";
+      document.getElementById("videoStatus").value = v ? v.status : "draft";
+      populateCourseModuleSelectsInForm(v ? v.course_id : null, v ? v.module_id : null);
+      document.getElementById("videoModal").hidden = false;
+    }
+    function closeModal() { document.getElementById("videoModal").hidden = true; }
+
+    function deleteVideo(id) {
+      const db = ECA.load();
+      const v = db.videos.find((x) => x.id === id);
+      ECA.UI.confirmModal({
+        title: "Delete this video?",
+        body: `Are you sure you want to permanently delete "${v.title}"? Student progress for this lesson will also be removed.`,
+        confirmLabel: "Delete Video",
+        danger: true,
+        onConfirm: () => {
+          const fresh = ECA.load();
+          fresh.videos = fresh.videos.filter((x) => x.id !== id);
+          fresh.video_progress = fresh.video_progress.filter((p) => p.video_id !== id);
+          ECA.save(fresh);
+          ECA.UI.toast("Video deleted.");
+          render();
+        },
+      });
+    }
+
+    function duplicateVideo(id) {
+      const db = ECA.load();
+      const v = db.videos.find((x) => x.id === id);
+      const siblingCount = db.videos.filter((x) => x.module_id === v.module_id).length;
+      const copy = Object.assign({}, v, {
+        id: ECA.uid("vid"),
+        title: v.title + " (Copy)",
+        lesson_number: siblingCount + 1,
+        order: siblingCount + 1,
+        status: "draft",
+        created_at: ECA.nowISO(),
+      });
+      db.videos.push(copy);
+      ECA.save(db);
+      ECA.UI.toast("Video duplicated as a draft.");
+      render();
+    }
+
+    document.getElementById("addVideoBtn").addEventListener("click", () => openModal(null));
+    document.getElementById("videoCancelBtn").addEventListener("click", closeModal);
+
+    document.getElementById("videoForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const db = ECA.load();
+      const id = document.getElementById("videoId").value;
+      const moduleId = document.getElementById("videoModule").value;
+      const courseId = document.getElementById("videoCourse").value;
+      const data = {
+        title: document.getElementById("videoTitle").value.trim(),
+        description: document.getElementById("videoDesc").value.trim(),
+        video_url: document.getElementById("videoUrl").value.trim(),
+        duration_seconds: Math.max(1, parseInt(document.getElementById("videoDuration").value, 10) || 1) * 60,
+        lesson_number: Math.max(1, parseInt(document.getElementById("videoLesson").value, 10) || 1),
+        status: document.getElementById("videoStatus").value,
+        course_id: courseId,
+        module_id: moduleId,
+      };
+      if (!data.title || !data.video_url) { ECA.UI.toast("Title and video URL are required.", "error"); return; }
+
+      if (id) {
+        Object.assign(db.videos.find((x) => x.id === id), data);
+      } else {
+        const count = db.videos.filter((v) => v.module_id === moduleId).length;
+        db.videos.push({ id: ECA.uid("vid"), thumbnail: "", order: count + 1, created_at: ECA.nowISO(), ...data });
+      }
+      ECA.save(db);
+      closeModal();
+      ECA.UI.toast(id ? "Video updated." : "Video added successfully.");
+      render();
+    });
+
+    document.getElementById("searchInput").addEventListener("input", (e) => { filters.search = e.target.value; render(); });
+    document.getElementById("courseFilter").addEventListener("change", (e) => { filters.course = e.target.value; filters.module = ""; refreshModuleFilterOptions(); render(); });
+    document.getElementById("moduleFilter").addEventListener("change", (e) => { filters.module = e.target.value; render(); });
+    document.getElementById("statusFilter").addEventListener("change", (e) => { filters.status = e.target.value; render(); });
+
+    populateFilterSelects();
+    render();
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Course — Enjoy Creator Academy™</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="eca-shell">
+  <div id="ecaSidebarMount"></div>
+  <div class="eca-main">
+    <div class="eca-topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="eca-mobile-toggle" id="ecaMobileToggle">☰</button>
+        <div>
+          <h1 id="ecaPageTitle">Course</h1>
+          <div class="sub" id="ecaPageSub"></div>
+        </div>
+      </div>
+      <div class="eca-user-chip" id="ecaUserChip"></div>
+    </div>
+
+    <div class="eca-content" id="pageContent">
+      <!-- filled by JS -->
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/db.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/ui.js"></script>
+<script>
+  const user = ECA.Auth.guardStudent();
+  if (user) {
+    const db = ECA.load();
+    const params = new URLSearchParams(window.location.search);
+    const courseId = params.get("course");
+    const course = db.courses.find((c) => c.id === courseId);
+    const content = document.getElementById("pageContent");
+
+    if (!course || !ECA.userHasCourseAccess(db, user.id, course.id)) {
+      ECA.UI.renderShell({ role: "student", active: "dashboard.html", user, title: "Course not found" });
+      content.innerHTML = `<div class="empty-state card"><h3>You don't have access to this course</h3><p>If you believe this is a mistake, contact your administrator.</p></div>`;
+    } else {
+      ECA.UI.renderShell({ role: "student", active: "dashboard.html", user, title: course.title });
+
+      const modules = ECA.modulesForCourse(db, course.id).filter((m) => m.status === "published");
+      const totalVideos = ECA.videosForCourse(db, course.id).filter((v) => v.status === "published").length;
+      const totalSeconds = ECA.videosForCourse(db, course.id).filter((v) => v.status === "published").reduce((s, v) => s + v.duration_seconds, 0);
+      const pct = ECA.courseProgressPct(db, user.id, course.id);
+
+      // find first not-completed video as "continue" target, else first video
+      let continueVideo = null;
+      for (const m of modules) {
+        const vids = ECA.videosForModule(db, m.id).filter((v) => v.status === "published");
+        for (const v of vids) {
+          const p = ECA.progressFor(db, user.id, v.id);
+          if (!p || !p.completed_at) { continueVideo = v; break; }
+        }
+        if (continueVideo) break;
+      }
+      if (!continueVideo && modules.length) {
+        const firstVids = ECA.videosForModule(db, modules[0].id);
+        continueVideo = firstVids[0];
+      }
+
+      content.innerHTML = `
+        <div class="card" style="padding:26px; margin-bottom:24px;">
+          <div class="kicker">${ECA.UI.esc(course.instructor)}</div>
+          <h1>${ECA.UI.esc(course.title)}</h1>
+          <p style="margin-top:10px; max-width:600px;">${ECA.UI.esc(course.description)}</p>
+          <div style="display:flex; gap:24px; margin-top:20px; flex-wrap:wrap;">
+            <div><div style="font-family:var(--font-display); font-size:20px;">${modules.length}</div><div class="kicker">Modules</div></div>
+            <div><div style="font-family:var(--font-display); font-size:20px;">${totalVideos}</div><div class="kicker">Videos</div></div>
+            <div><div style="font-family:var(--font-display); font-size:20px;">${ECA.fmtDuration(totalSeconds)}</div><div class="kicker">Content</div></div>
+            <div><div style="font-family:var(--font-display); font-size:20px; color:var(--gold);">${pct}%</div><div class="kicker">Completed</div></div>
+          </div>
+          <div style="margin-top:18px;">
+            ${continueVideo ? `<a href="lesson.html?video=${continueVideo.id}" class="btn btn-primary">Continue Learning</a>` : ""}
+          </div>
+        </div>
+
+        <div class="section-head"><h2>Curriculum</h2></div>
+        <div class="card" id="curriculumWrap"></div>
+      `;
+
+      const wrap = document.getElementById("curriculumWrap");
+      if (modules.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><h3>No modules yet</h3><p>Check back once your admin publishes content.</p></div>`;
+      } else {
+        wrap.innerHTML = modules
+          .map((m, mi) => {
+            const vids = ECA.videosForModule(db, m.id).filter((v) => v.status === "published");
+            const mPct = ECA.moduleProgressPct(db, user.id, m.id);
+            const rows = vids
+              .map((v) => {
+                const p = ECA.progressFor(db, user.id, v.id);
+                const done = p && p.completed_at;
+                const isNext = continueVideo && v.id === continueVideo.id;
+                let icon = done ? '<span class="icon done">✓</span>' : isNext ? '<span class="icon current-dot">●</span>' : '<span class="icon">○</span>';
+                return `
+                  <a class="lesson-row ${isNext ? "current" : ""}" href="lesson.html?video=${v.id}">
+                    ${icon}
+                    <span>Lesson ${v.lesson_number} — ${ECA.UI.esc(v.title)}</span>
+                    <span class="dur">${ECA.fmtDuration(v.duration_seconds)}</span>
+                  </a>`;
+              })
+              .join("");
+            return `
+              <div class="module-block ${mi === 0 ? "open" : ""}">
+                <div class="module-head" data-toggle>
+                  <div class="title">
+                    <span class="m-num">MODULE ${String(mi + 1).padStart(2, "0")}</span>
+                    <span class="m-name">${ECA.UI.esc(m.title)}</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:12px;">
+                    <span class="module-progress-mini">${mPct}%</span>
+                    <span class="chev">›</span>
+                  </div>
+                </div>
+                <div class="lesson-list">${rows}</div>
+              </div>`;
+          })
+          .join("");
+
+        wrap.querySelectorAll("[data-toggle]").forEach((head) => {
+          head.addEventListener("click", () => head.closest(".module-block").classList.toggle("open"));
+        });
+      }
+    }
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Dashboard — Enjoy Creator Academy™</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+
+<div class="eca-shell">
+  <div id="ecaSidebarMount"></div>
+  <div class="eca-main">
+    <div class="eca-topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="eca-mobile-toggle" id="ecaMobileToggle">☰</button>
+        <div>
+          <h1 id="ecaPageTitle">Admin Dashboard</h1>
+          <div class="sub" id="ecaPageSub">Platform overview</div>
+        </div>
+      </div>
+      <div class="eca-user-chip" id="ecaUserChip"></div>
+    </div>
+
+    <div class="eca-content">
+      <div class="grid-cards" id="statsGrid" style="margin-bottom:32px;"></div>
+
+      <div class="section-head"><h2>Recent Student Activity</h2></div>
+      <div class="card table-wrap">
+        <table class="table">
+          <thead><tr><th>Student</th><th>Lesson</th><th>Course</th><th>When</th></tr></thead>
+          <tbody id="activityBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/db.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/ui.js"></script>
+<script>
+  const user = ECA.Auth.guardAdmin();
+  if (user) {
+    const db = ECA.load();
+    ECA.UI.renderShell({ role: "admin", active: "index.html", user, title: "Admin Dashboard", sub: "Platform overview" });
+
+    const totalStudents = db.users.filter((u) => u.role === "student").length;
+    const activeStudents = db.users.filter((u) => u.role === "student" && u.status === "active").length;
+    const totalCourses = db.courses.length;
+    const totalModules = db.modules.length;
+    const totalVideos = db.videos.length;
+    const totalCompleted = db.video_progress.filter((p) => p.completed_at).length;
+
+    const stats = [
+      { label: "Students", value: totalStudents },
+      { label: "Active Students", value: activeStudents },
+      { label: "Courses", value: totalCourses },
+      { label: "Modules", value: totalModules },
+      { label: "Videos", value: totalVideos },
+      { label: "Completed Lessons", value: totalCompleted },
+    ];
+    document.getElementById("statsGrid").innerHTML = stats
+      .map((s) => `<div class="card stat-card"><div class="num">${s.value}</div><div class="label">${s.label}</div></div>`)
+      .join("");
+
+    const activity = db.video_progress
+      .slice()
+      .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+      .slice(0, 12);
+
+    const tbody = document.getElementById("activityBody");
+    if (activity.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><h3>No activity yet</h3><p>Student activity will show up here once lessons are watched.</p></div></td></tr>`;
+    } else {
+      tbody.innerHTML = activity
+        .map((p) => {
+          const student = db.users.find((u) => u.id === p.user_id);
+          const video = db.videos.find((v) => v.id === p.video_id);
+          const course = db.courses.find((c) => c.id === p.course_id);
+          const when = new Date(p.started_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+          return `<tr>
+            <td>${ECA.UI.esc(student ? student.name : "Unknown")}</td>
+            <td>${ECA.UI.esc(video ? video.title : "—")}${p.completed_at ? ' <span class="badge badge-published">Completed</span>' : ' <span class="badge">In progress</span>'}</td>
+            <td>${ECA.UI.esc(course ? course.title : "—")}</td>
+            <td style="color:var(--ink-faint);">${when}</td>
+          </tr>`;
+        })
+        .join("");
+    }
+  }
+</script>
+</body>
+</html>

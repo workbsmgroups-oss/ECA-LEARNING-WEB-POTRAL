@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Settings — Admin — Enjoy Creator Academy™</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+
+<div class="eca-shell">
+  <div id="ecaSidebarMount"></div>
+  <div class="eca-main">
+    <div class="eca-topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="eca-mobile-toggle" id="ecaMobileToggle">☰</button>
+        <div><h1 id="ecaPageTitle">Portal Settings</h1></div>
+      </div>
+      <div class="eca-user-chip" id="ecaUserChip"></div>
+    </div>
+
+    <div class="eca-content" style="max-width:560px;">
+      <div class="card" style="padding:26px;">
+        <form id="settingsForm">
+          <div class="field"><label>Academy Name</label><input id="setName" required /></div>
+          <div class="field"><label>Short Name</label><input id="setShort" required /></div>
+          <div class="field"><label>Portal Description</label><textarea id="setDesc"></textarea></div>
+          <div class="field"><label>Support Email</label><input id="setSupport" type="email" /></div>
+          <div class="field"><label>Login Page Text</label><input id="setLogin" /></div>
+          <div class="field"><label>Dashboard Welcome Message</label><input id="setWelcome" /></div>
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+        </form>
+      </div>
+
+      <div class="card" style="padding:26px; margin-top:20px;">
+        <h3 style="margin-bottom:10px;">Announcements</h3>
+        <p style="font-size:13px; margin-bottom:16px;">Shown to students as portal-wide notices.</p>
+        <div id="annList" style="margin-bottom:16px;"></div>
+        <div class="field-row">
+          <div class="field" style="flex:2;"><input id="annTitle" placeholder="Announcement title" /></div>
+        </div>
+        <div class="field"><textarea id="annBody" placeholder="Announcement message"></textarea></div>
+        <button class="btn btn-ghost" id="addAnnBtn">+ Add Announcement</button>
+      </div>
+
+      <div class="card" style="padding:26px; margin-top:20px; border-color: rgba(255,92,92,.25);">
+        <h3 style="margin-bottom:8px;">Reset Demo Data</h3>
+        <p style="font-size:13px; margin-bottom:16px;">Wipes everything stored in this browser and reseeds the sample course, modules, and users.</p>
+        <button class="btn btn-danger" id="resetBtn">Reset All Data</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/db.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/ui.js"></script>
+<script>
+  const admin = ECA.Auth.guardAdmin();
+  if (admin) {
+    ECA.UI.renderShell({ role: "admin", active: "settings.html", user: admin, title: "Portal Settings" });
+
+    function loadSettings() {
+      const db = ECA.load();
+      const s = db.platform_settings;
+      document.getElementById("setName").value = s.academy_name;
+      document.getElementById("setShort").value = s.short_name;
+      document.getElementById("setDesc").value = s.description;
+      document.getElementById("setSupport").value = s.support_email;
+      document.getElementById("setLogin").value = s.login_message;
+      document.getElementById("setWelcome").value = s.welcome_message;
+
+      const annList = document.getElementById("annList");
+      if (db.announcements.length === 0) {
+        annList.innerHTML = `<p style="font-size:13px;">No announcements yet.</p>`;
+      } else {
+        annList.innerHTML = db.announcements
+          .slice()
+          .reverse()
+          .map((a) => `
+            <div style="padding:12px 14px; border:1px solid var(--line); border-radius:9px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+              <div><div style="font-weight:600; font-size:13.5px;">${ECA.UI.esc(a.title)}</div><div style="font-size:12.5px; color:var(--ink-dim); margin-top:4px;">${ECA.UI.esc(a.body)}</div></div>
+              <button class="btn btn-ghost btn-small" data-del-ann="${a.id}">Remove</button>
+            </div>`)
+          .join("");
+        annList.querySelectorAll("[data-del-ann]").forEach((b) => {
+          b.addEventListener("click", () => {
+            const fresh = ECA.load();
+            fresh.announcements = fresh.announcements.filter((a) => a.id !== b.dataset.delAnn);
+            ECA.save(fresh);
+            ECA.UI.toast("Announcement removed.");
+            loadSettings();
+          });
+        });
+      }
+    }
+    loadSettings();
+
+    document.getElementById("settingsForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const db = ECA.load();
+      db.platform_settings = {
+        academy_name: document.getElementById("setName").value.trim(),
+        short_name: document.getElementById("setShort").value.trim(),
+        description: document.getElementById("setDesc").value.trim(),
+        support_email: document.getElementById("setSupport").value.trim(),
+        login_message: document.getElementById("setLogin").value.trim(),
+        welcome_message: document.getElementById("setWelcome").value.trim(),
+      };
+      ECA.save(db);
+      ECA.UI.toast("Settings saved.");
+    });
+
+    document.getElementById("addAnnBtn").addEventListener("click", function () {
+      const title = document.getElementById("annTitle").value.trim();
+      const body = document.getElementById("annBody").value.trim();
+      if (!title) { ECA.UI.toast("Announcement title is required.", "error"); return; }
+      const db = ECA.load();
+      db.announcements.push({ id: ECA.uid("ann"), title, body, created_at: ECA.nowISO() });
+      ECA.save(db);
+      document.getElementById("annTitle").value = "";
+      document.getElementById("annBody").value = "";
+      ECA.UI.toast("Announcement added.");
+      loadSettings();
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", function () {
+      ECA.UI.confirmModal({
+        title: "Reset all data?",
+        body: "This clears every course, student, and progress record stored in this browser and reloads the original sample data. This cannot be undone.",
+        confirmLabel: "Reset Data",
+        danger: true,
+        onConfirm: () => {
+          ECA.resetAll();
+          ECA.UI.toast("Data reset.");
+          loadSettings();
+        },
+      });
+    });
+  }
+</script>
+</body>
+</html>

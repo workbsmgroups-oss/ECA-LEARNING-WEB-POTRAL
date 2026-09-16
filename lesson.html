@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lesson — Enjoy Creator Academy™</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="eca-shell">
+  <div id="ecaSidebarMount"></div>
+  <div class="eca-main">
+    <div class="eca-topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="eca-mobile-toggle" id="ecaMobileToggle">☰</button>
+        <div>
+          <h1 id="ecaPageTitle" style="font-size:17px;">Enjoy Creator Academy™</h1>
+        </div>
+      </div>
+      <div class="eca-user-chip" id="ecaUserChip"></div>
+    </div>
+
+    <div class="eca-content" id="pageContent"></div>
+  </div>
+</div>
+
+<script src="assets/js/db.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/ui.js"></script>
+<script>
+  const user = ECA.Auth.guardStudent();
+  if (user) {
+    let db = ECA.load();
+    const params = new URLSearchParams(window.location.search);
+    const videoId = params.get("video");
+    const content = document.getElementById("pageContent");
+    const video = db.videos.find((v) => v.id === videoId);
+
+    ECA.UI.renderShell({ role: "student", active: "dashboard.html", user, title: "" });
+
+    if (!video || video.status !== "published") {
+      content.innerHTML = `<div class="empty-state card"><h3>Video not found</h3><p>This lesson may have been removed or unpublished.</p></div>`;
+    } else if (!ECA.userHasCourseAccess(db, user.id, video.course_id)) {
+      content.innerHTML = `<div class="empty-state card"><h3>You don't have access to this course</h3><p>Contact your administrator to request access.</p></div>`;
+    } else {
+      render();
+    }
+
+    function render() {
+      db = ECA.load();
+      const course = db.courses.find((c) => c.id === video.course_id);
+      const module = db.modules.find((m) => m.id === video.module_id);
+      const allVideos = ECA.videosForCourse(db, course.id).filter((v) => v.status === "published");
+      const idx = allVideos.findIndex((v) => v.id === video.id);
+      const prevVideo = idx > 0 ? allVideos[idx - 1] : null;
+      const nextVideo = idx < allVideos.length - 1 ? allVideos[idx + 1] : null;
+      const p = ECA.progressFor(db, user.id, video.id);
+      const isDone = p && p.completed_at;
+
+      // record a "started" progress row on first view
+      if (!p) {
+        db.video_progress.push({
+          id: ECA.uid("prog"),
+          user_id: user.id,
+          course_id: video.course_id,
+          module_id: video.module_id,
+          video_id: video.id,
+          started_at: ECA.nowISO(),
+          completed_at: null,
+          watch_seconds: 0,
+          last_position_seconds: 0,
+        });
+        ECA.save(db);
+      }
+
+      const modules = ECA.modulesForCourse(db, course.id).filter((m) => m.status === "published");
+
+      content.innerHTML = `
+        <div class="player-shell">
+          <div class="player-main">
+            <div class="player-frame">
+              <iframe src="${video.video_url}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="${ECA.UI.esc(video.title)}"></iframe>
+            </div>
+            <div class="player-info">
+              <div class="module-tag">${ECA.UI.esc(course.title)} · ${ECA.UI.esc(module ? module.title : "")}</div>
+              <h2>Lesson ${video.lesson_number} — ${ECA.UI.esc(video.title)}</h2>
+              <p style="margin-top:10px;">${ECA.UI.esc(video.description)}</p>
+              <div style="margin-top:14px;">
+                <span class="badge ${isDone ? "badge-published" : ""}">${isDone ? "Completed" : "In progress"}</span>
+              </div>
+              <div class="player-nav">
+                <div style="display:flex; gap:10px;">
+                  ${prevVideo ? `<a class="btn btn-ghost" href="lesson.html?video=${prevVideo.id}">← Previous Lesson</a>` : `<button class="btn btn-ghost" disabled>← Previous Lesson</button>`}
+                  ${nextVideo ? `<a class="btn btn-ghost" href="lesson.html?video=${nextVideo.id}">Next Lesson →</a>` : `<button class="btn btn-ghost" disabled>Next Lesson →</button>`}
+                </div>
+                <button class="btn btn-primary" id="markCompleteBtn" ${isDone ? "disabled" : ""}>${isDone ? "Completed" : "Mark as Complete"}</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="curriculum-side card" id="curriculumSide">
+            <div style="padding:16px 18px; border-bottom:1px solid var(--line); font-weight:600; font-size:13.5px;">Course Curriculum</div>
+            <div id="curriculumMini"></div>
+          </div>
+        </div>
+      `;
+
+      const mini = document.getElementById("curriculumMini");
+      mini.innerHTML = modules
+        .map((m, mi) => {
+          const vids = ECA.videosForModule(db, m.id).filter((v) => v.status === "published");
+          const rows = vids
+            .map((v) => {
+              const vp = ECA.progressFor(db, user.id, v.id);
+              const done = vp && vp.completed_at;
+              const isCurrent = v.id === video.id;
+              const icon = done ? '<span class="icon done">✓</span>' : isCurrent ? '<span class="icon current-dot">●</span>' : '<span class="icon">○</span>';
+              return `<a class="lesson-row ${isCurrent ? "current" : ""}" href="lesson.html?video=${v.id}">${icon}<span>Lesson ${v.lesson_number} — ${ECA.UI.esc(v.title)}</span></a>`;
+            })
+            .join("");
+          const isCurrentModule = m.id === video.module_id;
+          return `
+            <div class="module-block ${isCurrentModule ? "open" : ""}">
+              <div class="module-head" data-toggle>
+                <div class="title">
+                  <span class="m-num">MODULE ${String(mi + 1).padStart(2, "0")}</span>
+                  <span class="m-name" style="font-size:13px;">${ECA.UI.esc(m.title)}</span>
+                </div>
+                <span class="chev">›</span>
+              </div>
+              <div class="lesson-list">${rows}</div>
+            </div>`;
+        })
+        .join("");
+
+      mini.querySelectorAll("[data-toggle]").forEach((head) => {
+        head.addEventListener("click", () => head.closest(".module-block").classList.toggle("open"));
+      });
+
+      const markBtn = document.getElementById("markCompleteBtn");
+      if (markBtn && !isDone) {
+        markBtn.addEventListener("click", function () {
+          const freshDb = ECA.load();
+          ECA.markVideoComplete(freshDb, user.id, video);
+          ECA.UI.toast("Lesson marked complete.");
+          render();
+        });
+      }
+    }
+  }
+</script>
+</body>
+</html>
