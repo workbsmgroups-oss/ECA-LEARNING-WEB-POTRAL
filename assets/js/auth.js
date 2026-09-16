@@ -1,101 +1,273 @@
+```js
 /**
  * ECA.Auth — session + route protection.
  *
- * Passwords here are compared in plaintext because there is no server to
- * hash against in this static prototype. In production this entire file
- * is replaced by supabase.auth.signInWithPassword(), and every "guard*"
- * function below becomes a Postgres RLS policy checked server-side —
- * client-side route guarding (as done here) is a UX convenience only
- * and must never be the actual security boundary.
+ * IMPORTANT:
+ * This prototype uses localStorage/sessionStorage.
+ * It is NOT suitable for production security.
+ *
+ * Admin account:
+ * Email:    srirammarudhaiyappan45@gmail.com
+ * Password: Sriram Ceo Eca
  */
 
 const ECA_SESSION_KEY = "eca_session_v1";
 
 ECA.Auth = (function () {
+
+  /*
+   * Make sure the main admin account exists.
+   *
+   * This is required because an older eca_db_v1 may already exist
+   * in the browser's localStorage.
+   */
+  function ensureSriramAdmin() {
+    const db = ECA.load();
+
+    if (!Array.isArray(db.users)) {
+      db.users = [];
+    }
+
+    const adminEmail = "srirammarudhaiyappan45@gmail.com";
+    const adminPassword = "Sriram Ceo Eca";
+
+    let admin = db.users.find(
+      (u) =>
+        String(u.email || "").toLowerCase() ===
+        adminEmail.toLowerCase()
+    );
+
+    if (admin) {
+      // Update the existing account
+      admin.name = "B. Sriram Marudhaiyappan";
+      admin.email = adminEmail;
+      admin.password = adminPassword;
+      admin.role = "admin";
+      admin.status = "active";
+
+      if (!admin.created_at) {
+        admin.created_at = ECA.nowISO();
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(admin, "last_login")) {
+        admin.last_login = null;
+      }
+    } else {
+      // Create the account
+      admin = {
+        id: "user_admin_sriram",
+        name: "B. Sriram Marudhaiyappan",
+        email: adminEmail,
+        password: adminPassword,
+        role: "admin",
+        status: "active",
+        avatar: "",
+        created_at: ECA.nowISO(),
+        last_login: null,
+      };
+
+      db.users.push(admin);
+    }
+
+    ECA.save(db);
+
+    return admin;
+  }
+
+
   function currentUser() {
     const raw = sessionStorage.getItem(ECA_SESSION_KEY);
-    if (!raw) return null;
+
+    if (!raw) {
+      return null;
+    }
+
     try {
       const session = JSON.parse(raw);
       const db = ECA.load();
-      const user = db.users.find((u) => u.id === session.user_id);
-      if (!user || user.status !== "active") return null;
+
+      const user = db.users.find(
+        (u) => u.id === session.user_id
+      );
+
+      if (!user || user.status !== "active") {
+        return null;
+      }
+
       return user;
+
     } catch (e) {
       return null;
     }
   }
 
+
   function login(email, password) {
+
+    /*
+     * IMPORTANT:
+     * Run the admin migration before checking credentials.
+     * This fixes the situation where the browser already has
+     * an old eca_db_v1.
+     */
+    ensureSriramAdmin();
+
     const db = ECA.load();
+
+    const normalizedEmail = String(email || "")
+      .trim()
+      .toLowerCase();
+
     const user = db.users.find(
-      (u) => u.email.toLowerCase() === String(email).toLowerCase()
+      (u) =>
+        String(u.email || "")
+          .trim()
+          .toLowerCase() === normalizedEmail
     );
-    if (!user) return { ok: false, error: "No account found with that email." };
-    if (user.status !== "active")
-      return { ok: false, error: "This account has been disabled. Contact support." };
-    if (user.password !== password)
-      return { ok: false, error: "Incorrect password." };
+
+    if (!user) {
+      return {
+        ok: false,
+        error: "No account found with that email.",
+      };
+    }
+
+    if (user.status !== "active") {
+      return {
+        ok: false,
+        error:
+          "This account has been disabled. Contact support.",
+      };
+    }
+
+    if (user.password !== password) {
+      return {
+        ok: false,
+        error: "Incorrect password.",
+      };
+    }
+
+    // Update last login
     user.last_login = ECA.nowISO();
+
     ECA.save(db);
-    sessionStorage.setItem(ECA_SESSION_KEY, JSON.stringify({ user_id: user.id }));
-    return { ok: true, user: user };
+
+    // Create session
+    sessionStorage.setItem(
+      ECA_SESSION_KEY,
+      JSON.stringify({
+        user_id: user.id,
+      })
+    );
+
+    return {
+      ok: true,
+      user: user,
+    };
   }
+
 
   function logout() {
     sessionStorage.removeItem(ECA_SESSION_KEY);
-    window.location.href = redirectBase() + "login.html";
+
+    window.location.href =
+      redirectBase() + "login.html";
   }
 
-  // Figures out relative path prefix based on current location, so the
-  // same auth.js works whether it's loaded from / or /admin/.
+
+  /*
+   * Figures out relative path prefix based on current location.
+   */
   function redirectBase() {
-    return window.location.pathname.includes("/admin/") ? "../" : "";
+    return window.location.pathname.includes("/admin/")
+      ? "../"
+      : "";
   }
+
 
   function adminBase() {
-    return window.location.pathname.includes("/admin/") ? "" : "admin/";
+    return window.location.pathname.includes("/admin/")
+      ? ""
+      : "admin/";
   }
 
-  // Call at the top of any page that requires a logged-in student.
+
+  /*
+   * Student route protection.
+   */
   function guardStudent() {
+
     const user = currentUser();
+
     if (!user) {
-      window.location.href = redirectBase() + "login.html";
+      window.location.href =
+        redirectBase() + "login.html";
+
       return null;
     }
+
     if (user.role === "admin") {
-      window.location.href = redirectBase() + "admin/index.html";
+
+      window.location.href =
+        redirectBase() + "admin/index.html";
+
       return null;
     }
+
     return user;
   }
 
-  // Call at the top of any page under /admin/.
+
+  /*
+   * Admin route protection.
+   */
   function guardAdmin() {
+
     const user = currentUser();
+
     if (!user) {
-      window.location.href = redirectBase() + "login.html";
+
+      window.location.href =
+        redirectBase() + "login.html";
+
       return null;
     }
+
     if (user.role !== "admin") {
-      window.location.href = redirectBase() + "dashboard.html";
+
+      window.location.href =
+        redirectBase() + "dashboard.html";
+
       return null;
     }
+
     return user;
   }
 
-  // If already logged in and visiting login/public pages, bounce forward.
+
+  /*
+   * Redirect logged-in users away from login/public pages.
+   */
   function redirectIfLoggedIn() {
+
     const user = currentUser();
-    if (!user) return;
+
+    if (!user) {
+      return;
+    }
+
     if (user.role === "admin") {
-      window.location.href = adminBase() + "index.html".replace("index.html", "index.html");
-      window.location.href = adminBase() + "index.html";
+
+      window.location.href =
+        adminBase() + "index.html";
+
     } else {
-      window.location.href = "dashboard.html";
+
+      window.location.href =
+        "dashboard.html";
     }
   }
+
 
   return {
     currentUser,
@@ -106,5 +278,66 @@ ECA.Auth = (function () {
     redirectIfLoggedIn,
     redirectBase,
     adminBase,
+    ensureSriramAdmin,
   };
+
 })();
+```
+
+### Now do exactly this
+
+1. Replace your current:
+
+   ```text
+   assets/js/auth.js
+   ```
+
+   with the code above.
+
+2. Keep your `login.html` exactly as you originally sent it.
+
+3. **Refresh the login page completely** with:
+   **Ctrl + Shift + R**
+
+4. Login with:
+
+```text
+Email:
+srirammarudhaiyappan45@gmail.com
+
+Password:
+Sriram Ceo Eca
+```
+
+5. It should redirect to:
+
+```text
+admin/index.html
+```
+
+### Why this version should fix it
+
+Your original `auth.js` searches `db.users` directly for the email.
+
+Your existing database still has:
+
+```text
+admin@eca.com
+admin123
+```
+
+as the admin account.
+
+The new `auth.js` first runs `ensureSriramAdmin()`, which **adds or updates**:
+
+```text
+B. Sriram Marudhaiyappan
+srirammarudhaiyappan45@gmail.com
+Sriram Ceo Eca
+admin
+active
+```
+
+So it doesn't matter whether your browser already has the old `eca_db_v1`.
+
+**You don't need to delete your existing students, courses, progress, or database.**
