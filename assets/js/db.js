@@ -1,3 +1,4 @@
+```js
 /**
  * ECA.DB — localStorage-backed data layer.
  *
@@ -33,6 +34,7 @@ const ECA = (function () {
 
   function seed() {
     const courseId = "course_ai_creator";
+
     const modules = [
       "AI Video Creation Fundamentals",
       "Prompt Engineering",
@@ -67,8 +69,10 @@ const ECA = (function () {
 
     let videos = [];
     let lessonCounter = 1;
+
     modules.forEach((m, mi) => {
       const count = mi === 0 ? 6 : 4 + (mi % 3);
+
       for (let i = 0; i < count; i++) {
         videos.push({
           id: "vid_" + lessonCounter,
@@ -91,6 +95,7 @@ const ECA = (function () {
           status: "published",
           created_at: nowISO(),
         });
+
         lessonCounter++;
       }
     });
@@ -120,22 +125,86 @@ const ECA = (function () {
       order: 2,
       created_at: nowISO(),
     };
+
     const ytModules = [
-      { id: "mod_yt_1", course_id: "course_yt", title: "Channel Strategy", description: "", order: 1, status: "published", created_at: nowISO() },
-      { id: "mod_yt_2", course_id: "course_yt", title: "Retention Editing", description: "", order: 2, status: "published", created_at: nowISO() },
-    ];
-    const ytVideos = [
-      { id: "vid_yt_1", course_id: "course_yt", module_id: "mod_yt_1", title: "Finding Your Niche", description: "Lesson 1", video_url: "https://player.vimeo.com/video/76979871", thumbnail: "", duration_seconds: 420, lesson_number: 1, order: 1, status: "published", created_at: nowISO() },
-      { id: "vid_yt_2", course_id: "course_yt", module_id: "mod_yt_1", title: "Channel Setup", description: "Lesson 2", video_url: "https://player.vimeo.com/video/76979871", thumbnail: "", duration_seconds: 380, lesson_number: 2, order: 2, status: "published", created_at: nowISO() },
-      { id: "vid_yt_3", course_id: "course_yt", module_id: "mod_yt_2", title: "The First Three Seconds", description: "Lesson 3", video_url: "https://player.vimeo.com/video/76979871", thumbnail: "", duration_seconds: 300, lesson_number: 1, order: 1, status: "published", created_at: nowISO() },
+      {
+        id: "mod_yt_1",
+        course_id: "course_yt",
+        title: "Channel Strategy",
+        description: "",
+        order: 1,
+        status: "published",
+        created_at: nowISO(),
+      },
+      {
+        id: "mod_yt_2",
+        course_id: "course_yt",
+        title: "Retention Editing",
+        description: "",
+        order: 2,
+        status: "published",
+        created_at: nowISO(),
+      },
     ];
 
+    const ytVideos = [
+      {
+        id: "vid_yt_1",
+        course_id: "course_yt",
+        module_id: "mod_yt_1",
+        title: "Finding Your Niche",
+        description: "Lesson 1",
+        video_url: "https://player.vimeo.com/video/76979871",
+        thumbnail: "",
+        duration_seconds: 420,
+        lesson_number: 1,
+        order: 1,
+        status: "published",
+        created_at: nowISO(),
+      },
+      {
+        id: "vid_yt_2",
+        course_id: "course_yt",
+        module_id: "mod_yt_1",
+        title: "Channel Setup",
+        description: "Lesson 2",
+        video_url: "https://player.vimeo.com/video/76979871",
+        thumbnail: "",
+        duration_seconds: 380,
+        lesson_number: 2,
+        order: 2,
+        status: "published",
+        created_at: nowISO(),
+      },
+      {
+        id: "vid_yt_3",
+        course_id: "course_yt",
+        module_id: "mod_yt_2",
+        title: "The First Three Seconds",
+        description: "Lesson 3",
+        video_url: "https://player.vimeo.com/video/76979871",
+        thumbnail: "",
+        duration_seconds: 300,
+        lesson_number: 1,
+        order: 1,
+        status: "published",
+        created_at: nowISO(),
+      },
+    ];
+
+    /*
+     * USERS
+     *
+     * New admin account:
+     * Email: srirammarudhaiyappan45@gmail.com
+     * Password: Sriram Ceo Eca
+     */
     const users = [
       {
         id: "user_admin",
-        name: "Academy Admin",
-        email: "admin@eca.com",
-        password: "admin123",
+        name: "B. Sriram Marudhaiyappan",
+        email: "srirammarudhaiyappan45@gmail.com",
+        password: "Sriram Ceo Eca",
         role: "admin",
         status: "active",
         avatar: "",
@@ -167,14 +236,30 @@ const ECA = (function () {
     ];
 
     const course_access = [
-      { id: uid("acc"), user_id: "user_rahul", course_id: courseId, granted_at: nowISO() },
-      { id: uid("acc"), user_id: "user_priya", course_id: courseId, granted_at: nowISO() },
-      { id: uid("acc"), user_id: "user_priya", course_id: "course_yt", granted_at: nowISO() },
+      {
+        id: uid("acc"),
+        user_id: "user_rahul",
+        course_id: courseId,
+        granted_at: nowISO(),
+      },
+      {
+        id: uid("acc"),
+        user_id: "user_priya",
+        course_id: courseId,
+        granted_at: nowISO(),
+      },
+      {
+        id: uid("acc"),
+        user_id: "user_priya",
+        course_id: "course_yt",
+        granted_at: nowISO(),
+      },
     ];
 
     // Give Rahul some progress so the dashboard isn't empty on first look.
     const video_progress = [];
     const rahulVideos = videos.slice(0, 14);
+
     rahulVideos.forEach((v, i) => {
       video_progress.push({
         id: uid("prog"),
@@ -184,181 +269,85 @@ const ECA = (function () {
         video_id: v.id,
         started_at: nowISO(),
         completed_at: i < 11 ? nowISO() : null,
-        watch_seconds: i < 11 ? v.duration_seconds : Math.floor(v.duration_seconds * 0.4),
-        last_position_seconds: i < 11 ? v.duration_seconds : Math.floor(v.duration_seconds * 0.4),
+        watch_seconds:
+          i < 11
+            ? v.duration_seconds
+            : Math.floor(v.duration_seconds * 0.4),
+        last_position_seconds:
+          i < 11
+            ? v.duration_seconds
+            : Math.floor(v.duration_seconds * 0.4),
       });
     });
 
     return {
       users,
+
       courses: [course, secondCourse],
+
       modules: modules.concat(ytModules),
+
       videos: videos.concat(ytVideos),
+
       course_access,
+
       video_progress,
+
       announcements: [
         {
           id: uid("ann"),
           title: "Welcome to Enjoy Creator Academy",
-          body: "Your learning portal is live. Start with Module 01 of the AI Video Creation Master Course.",
+          body:
+            "Your learning portal is live. Start with Module 01 of the AI Video Creation Master Course.",
           created_at: nowISO(),
         },
       ],
+
       platform_settings: {
         academy_name: "Enjoy Creator Academy",
         short_name: "ECA",
-        description: "Premium AI education and creator learning platform.",
+        description:
+          "Premium AI education and creator learning platform.",
         support_email: "support@enjoycreatoracademy.com",
         login_message: "Login to continue your learning journey.",
         welcome_message: "Welcome back. Let's keep building.",
       },
+
       session: null,
     };
   }
 
   function load() {
     const raw = localStorage.getItem(ECA_DB_KEY);
+
     if (!raw) {
       const fresh = seed();
       localStorage.setItem(ECA_DB_KEY, JSON.stringify(fresh));
       return fresh;
     }
+
     try {
-      return JSON.parse(raw);
-    } catch (e) {
-      const fresh = seed();
-      localStorage.setItem(ECA_DB_KEY, JSON.stringify(fresh));
-      return fresh;
-    }
-  }
+      const db = JSON.parse(raw);
 
-  function save(db) {
-    localStorage.setItem(ECA_DB_KEY, JSON.stringify(db));
-  }
+      /*
+       * IMPORTANT:
+       * Automatically add/update Sriram's admin account.
+       *
+       * This means you do NOT have to delete the existing database.
+       */
+      if (!Array.isArray(db.users)) {
+        db.users = [];
+      }
 
-  function resetAll() {
-    localStorage.removeItem(ECA_DB_KEY);
-    return load();
-  }
+      const adminEmail = "srirammarudhaiyappan45@gmail.com";
 
-  // ---- derived / query helpers -------------------------------------
+      const existingAdmin = db.users.find(
+        (user) =>
+          String(user.email || "").toLowerCase() ===
+          adminEmail.toLowerCase()
+      );
 
-  function coursesForUser(db, userId) {
-    const accessIds = db.course_access
-      .filter((a) => a.user_id === userId)
-      .map((a) => a.course_id);
-    return db.courses.filter((c) => accessIds.includes(c.id));
-  }
-
-  function userHasCourseAccess(db, userId, courseId) {
-    return db.course_access.some(
-      (a) => a.user_id === userId && a.course_id === courseId
-    );
-  }
-
-  function modulesForCourse(db, courseId) {
-    return db.modules
-      .filter((m) => m.course_id === courseId)
-      .sort((a, b) => a.order - b.order);
-  }
-
-  function videosForModule(db, moduleId) {
-    return db.videos
-      .filter((v) => v.module_id === moduleId)
-      .sort((a, b) => a.order - b.order);
-  }
-
-  function videosForCourse(db, courseId) {
-    return db.videos
-      .filter((v) => v.course_id === courseId)
-      .sort((a, b) => a.order - b.order);
-  }
-
-  function progressFor(db, userId, videoId) {
-    return db.video_progress.find(
-      (p) => p.user_id === userId && p.video_id === videoId
-    );
-  }
-
-  function courseProgressPct(db, userId, courseId) {
-    const vids = videosForCourse(db, courseId).filter(
-      (v) => v.status === "published"
-    );
-    if (vids.length === 0) return 0;
-    const completed = vids.filter((v) => {
-      const p = progressFor(db, userId, v.id);
-      return p && p.completed_at;
-    }).length;
-    return Math.round((completed / vids.length) * 100);
-  }
-
-  function moduleProgressPct(db, userId, moduleId) {
-    const vids = videosForModule(db, moduleId).filter(
-      (v) => v.status === "published"
-    );
-    if (vids.length === 0) return 0;
-    const completed = vids.filter((v) => {
-      const p = progressFor(db, userId, v.id);
-      return p && p.completed_at;
-    }).length;
-    return Math.round((completed / vids.length) * 100);
-  }
-
-  function markVideoComplete(db, userId, video) {
-    let p = progressFor(db, userId, video.id);
-    if (!p) {
-      p = {
-        id: uid("prog"),
-        user_id: userId,
-        course_id: video.course_id,
-        module_id: video.module_id,
-        video_id: video.id,
-        started_at: nowISO(),
-        completed_at: null,
-        watch_seconds: 0,
-        last_position_seconds: 0,
-      };
-      db.video_progress.push(p);
-    }
-    p.completed_at = nowISO();
-    p.watch_seconds = video.duration_seconds;
-    p.last_position_seconds = video.duration_seconds;
-    save(db);
-    return p;
-  }
-
-  function recentlyWatched(db, userId, limit) {
-    const mine = db.video_progress
-      .filter((p) => p.user_id === userId)
-      .sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
-    return mine.slice(0, limit || 5).map((p) => {
-      return { progress: p, video: db.videos.find((v) => v.id === p.video_id) };
-    });
-  }
-
-  function fmtDuration(totalSeconds) {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.round((totalSeconds % 3600) / 60);
-    if (h > 0) return h + "h " + m + "m";
-    return m + "m";
-  }
-
-  return {
-    uid,
-    nowISO,
-    load,
-    save,
-    resetAll,
-    coursesForUser,
-    userHasCourseAccess,
-    modulesForCourse,
-    videosForModule,
-    videosForCourse,
-    progressFor,
-    courseProgressPct,
-    moduleProgressPct,
-    markVideoComplete,
-    recentlyWatched,
-    fmtDuration,
-  };
-})();
+      if (existingAdmin) {
+        existingAdmin.name = "B. Sriram Marudhaiyappan";
+        existingAdmin.email = adminEmail;
+```
