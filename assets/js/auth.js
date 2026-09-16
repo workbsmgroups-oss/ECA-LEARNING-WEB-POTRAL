@@ -2,31 +2,27 @@ const ECA_SESSION_KEY = "eca_session_v1";
 
 ECA.Auth = (function () {
 
-  // =========================================================
-  // FORCE / MIGRATE ADMIN ACCOUNT
-  // =========================================================
+  const ADMIN_EMAIL = "srirammarudhaiyappan45@gmail.com";
+  const ADMIN_PASSWORD = "Sriram Ceo Eca";
+
   function ensureAdminAccount() {
     const db = ECA.load();
 
-    if (!db.users) {
+    if (!Array.isArray(db.users)) {
       db.users = [];
     }
 
-    const adminEmail = "srirammarudhaiyappan45@gmail.com";
-    const adminPassword = "Sriram Ceo Eca";
-
-    let admin = db.users.find(
-      (u) =>
-        String(u.email || "").trim().toLowerCase() ===
-        adminEmail.toLowerCase()
-    );
+    let admin = db.users.find(function (user) {
+      return String(user.email || "").trim().toLowerCase() ===
+        ADMIN_EMAIL.toLowerCase();
+    });
 
     if (!admin) {
       admin = {
         id: "user_admin_sriram",
         name: "B. Sriram Marudhaiyappan",
-        email: adminEmail,
-        password: adminPassword,
+        email: ADMIN_EMAIL,
+        password: ADMIN_PASSWORD,
         role: "admin",
         status: "active",
         avatar: "",
@@ -35,12 +31,15 @@ ECA.Auth = (function () {
       };
 
       db.users.push(admin);
+
     } else {
+
       admin.name = "B. Sriram Marudhaiyappan";
-      admin.email = adminEmail;
-      admin.password = adminPassword;
+      admin.email = ADMIN_EMAIL;
+      admin.password = ADMIN_PASSWORD;
       admin.role = "admin";
       admin.status = "active";
+
     }
 
     ECA.save(db);
@@ -49,217 +48,315 @@ ECA.Auth = (function () {
   }
 
 
-  // =========================================================
-  // CURRENT USER
-  // =========================================================
   function currentUser() {
-    const raw = sessionStorage.getItem(ECA_SESSION_KEY);
 
-    if (!raw) return null;
+    const raw =
+      sessionStorage.getItem(ECA_SESSION_KEY);
+
+    if (!raw) {
+      return null;
+    }
 
     try {
-      const session = JSON.parse(raw);
-      const db = ECA.load();
 
-      if (!db.users) return null;
+      const session =
+        JSON.parse(raw);
 
-      const user = db.users.find(
-        (u) => u.id === session.user_id
-      );
+      if (!session || !session.user_id) {
+        return null;
+      }
 
-      if (!user) return null;
+      const db =
+        ECA.load();
 
-      if (user.status !== "active") return null;
+      if (!Array.isArray(db.users)) {
+        return null;
+      }
+
+      const user =
+        db.users.find(function (u) {
+          return u.id === session.user_id;
+        });
+
+      if (!user) {
+        return null;
+      }
+
+      if (user.status !== "active") {
+        return null;
+      }
 
       return user;
 
-    } catch (e) {
-      console.error("Session error:", e);
-      sessionStorage.removeItem(ECA_SESSION_KEY);
+    } catch (error) {
+
+      console.error(
+        "ECA session error:",
+        error
+      );
+
+      sessionStorage.removeItem(
+        ECA_SESSION_KEY
+      );
+
       return null;
     }
   }
 
 
-  // =========================================================
-  // LOGIN
-  // =========================================================
   function login(email, password) {
 
-    // Always make sure admin account exists
-    ensureAdminAccount();
+    const admin =
+      ensureAdminAccount();
 
-    const db = ECA.load();
+    const db =
+      ECA.load();
 
-    const inputEmail = String(email || "")
-      .trim()
-      .toLowerCase();
+    const inputEmail =
+      String(email || "")
+        .trim()
+        .toLowerCase();
 
-    const inputPassword = String(password || "");
+    const inputPassword =
+      String(password || "");
 
-    const user = db.users.find(
-      (u) =>
-        String(u.email || "")
-          .trim()
-          .toLowerCase() === inputEmail
-    );
+
+    /* ==========================================
+       ADMIN LOGIN
+    ========================================== */
+
+    if (
+      inputEmail === ADMIN_EMAIL.toLowerCase() &&
+      inputPassword === ADMIN_PASSWORD
+    ) {
+
+      admin.last_login =
+        ECA.nowISO();
+
+      admin.status =
+        "active";
+
+      admin.role =
+        "admin";
+
+      ECA.save(db);
+
+      sessionStorage.setItem(
+        ECA_SESSION_KEY,
+        JSON.stringify({
+          user_id: admin.id,
+          role: "admin",
+          email: ADMIN_EMAIL
+        })
+      );
+
+      return {
+        ok: true,
+        user: admin
+      };
+    }
+
+
+    /* ==========================================
+       NORMAL USER LOGIN
+    ========================================== */
+
+    const user =
+      db.users.find(function (u) {
+
+        return (
+          String(u.email || "")
+            .trim()
+            .toLowerCase() === inputEmail
+        );
+
+      });
+
 
     if (!user) {
+
       return {
         ok: false,
         error: "No account found with that email."
       };
+
     }
+
 
     if (user.status !== "active") {
+
       return {
         ok: false,
-        error: "This account has been disabled. Contact support."
+        error:
+          "This account has been disabled. Contact support."
       };
+
     }
 
-    if (String(user.password) !== inputPassword) {
+
+    if (
+      String(user.password) !==
+      inputPassword
+    ) {
+
       return {
         ok: false,
         error: "Incorrect password."
       };
+
     }
 
-    user.last_login = ECA.nowISO();
+
+    user.last_login =
+      ECA.nowISO();
 
     ECA.save(db);
+
 
     sessionStorage.setItem(
       ECA_SESSION_KEY,
       JSON.stringify({
-        user_id: user.id
+        user_id: user.id,
+        role: user.role,
+        email: user.email
       })
     );
+
 
     return {
       ok: true,
       user: user
     };
+
   }
 
 
-  // =========================================================
-  // LOGOUT
-  // =========================================================
   function logout() {
 
-    sessionStorage.removeItem(ECA_SESSION_KEY);
+    sessionStorage.removeItem(
+      ECA_SESSION_KEY
+    );
 
     window.location.href =
-      redirectBase() + "login.html";
+      "../login.html";
   }
 
 
-  // =========================================================
-  // PATH HELPERS
-  // =========================================================
-  function redirectBase() {
-    return window.location.pathname.includes("/admin/")
-      ? "../"
-      : "";
-  }
-
-  function adminBase() {
-    return window.location.pathname.includes("/admin/")
-      ? ""
-      : "admin/";
-  }
-
-
-  // =========================================================
-  // STUDENT GUARD
-  // =========================================================
-  function guardStudent() {
-
-    const user = currentUser();
-
-    if (!user) {
-      window.location.href =
-        redirectBase() + "login.html";
-
-      return null;
-    }
-
-    if (user.role === "admin") {
-
-      window.location.href =
-        redirectBase() + "admin/index.html";
-
-      return null;
-    }
-
-    return user;
-  }
-
-
-  // =========================================================
-  // ADMIN GUARD
-  // =========================================================
   function guardAdmin() {
 
-    const user = currentUser();
+    const user =
+      currentUser();
 
     if (!user) {
 
-      window.location.href =
-        redirectBase() + "login.html";
+      window.location.replace(
+        "../login.html"
+      );
 
       return null;
     }
+
 
     if (user.role !== "admin") {
 
-      window.location.href =
-        redirectBase() + "dashboard.html";
+      window.location.replace(
+        "../dashboard.html"
+      );
 
       return null;
     }
+
 
     return user;
   }
 
 
-  // =========================================================
-  // REDIRECT IF ALREADY LOGGED IN
-  // =========================================================
-  function redirectIfLoggedIn() {
+  function guardStudent() {
 
-    const user = currentUser();
+    const user =
+      currentUser();
 
-    if (!user) return;
+    if (!user) {
+
+      window.location.replace(
+        "login.html"
+      );
+
+      return null;
+    }
+
 
     if (user.role === "admin") {
 
-      window.location.href =
-        adminBase() + "index.html";
+      window.location.replace(
+        "admin/index.html"
+      );
 
-    } else {
-
-      window.location.href =
-        "dashboard.html";
-
+      return null;
     }
+
+
+    return user;
   }
 
 
-  // =========================================================
-  // PUBLIC API
-  // =========================================================
+  function redirectIfLoggedIn() {
+
+    const user =
+      currentUser();
+
+    if (!user) {
+      return;
+    }
+
+
+    if (user.role === "admin") {
+
+      window.location.replace(
+        "admin/index.html"
+      );
+
+    } else {
+
+      window.location.replace(
+        "dashboard.html"
+      );
+
+    }
+
+  }
+
+
+  function redirectBase() {
+
+    return window.location.pathname.includes("/admin/")
+      ? "../"
+      : "";
+
+  }
+
+
+  function adminBase() {
+
+    return window.location.pathname.includes("/admin/")
+      ? ""
+      : "admin/";
+
+  }
+
+
   return {
+
     currentUser,
     login,
     logout,
-    guardStudent,
     guardAdmin,
+    guardStudent,
     redirectIfLoggedIn,
     redirectBase,
     adminBase,
     ensureAdminAccount
+
   };
 
 })();
